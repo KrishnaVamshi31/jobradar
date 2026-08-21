@@ -1,0 +1,25 @@
+# Virtual environment - never commit this, it is huge and machine specific
+.venv/
+venv/
+
+# Python leftovers
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Scraped output - this is YOUR data, not part of the project
+data/*.csv
+data/*.xlsx
+data/*.html
+
+# API keys - NEVER commit these. Anything pushed to GitHub is public
+# forever, even if you delete it later.
+adzuna_key.txt
+*.key
+.env
+
+# Editor and OS junk
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

@@ -1,0 +1,10 @@
+# Install everything in here with:
+#     pip install -r requirements.txt
+
+requests>=2.32          # downloads web pages and calls APIs
+beautifulsoup4>=4.12    # digs data out of raw HTML
+pandas>=2.2             # holds the jobs as a table, writes CSV and Excel
+openpyxl>=3.1           # lets pandas write real .xlsx files
+rich>=13.0              # the colored tables in the terminal
+
+pytest>=8.0             # only needed to run the tests

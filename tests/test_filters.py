@@ -1,0 +1,296 @@
+"""
+Tests for filters.py - the scoring and ranking logic.
+
+Run them all with:
+
+    python -m pytest
+
+A test is just a function whose name starts with test_. Inside it you set
+up a situation, run your code, and "assert" what you expect to be true.
+If an assert is wrong, pytest tells you exactly which line failed.
+
+Why bother? Because the day you tweak the scoring, these tests instantly
+tell you whether you broke anything. That is much faster than re-running
+the scraper and squinting at the output.
+"""
+
+import sys
+from pathlib import Path
+
+# Let the tests import the project files from the folder above this one.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import filters
+
+
+def make_job(title="Some Job", tags="", location="Remote"):
+    """
+    A tiny helper to build a fake job for testing.
+
+    Using a helper keeps each test short and focused on the one thing it
+    is actually checking.
+    """
+    return {
+        "title": title,
+        "company": "Test Co",
+        "location": location,
+        "tags": tags,
+        "url": "https://example.com/job/1",
+        "source": "test",
+        "posted": "2026-01-01",
+    }
+
+
+KEYWORDS = {"python": 10, "junior": 6, "engineer": 4}
+
+
+# ---------------------------------------------------------------------------
+# score_job
+# ---------------------------------------------------------------------------
+
+def test_title_match_earns_full_points():
+    job = make_job(title="Junior Python Engineer")
+    score, matched = filters.score_job(job, KEYWORDS)
+
+    assert score == 20                    # 10 + 6 + 4
+    assert set(matched) == {"python", "junior", "engineer"}
+
+
+def test_no_match_scores_zero():
+    score, matched = filters.score_job(make_job(title="Chef"), KEYWORDS)
+
+    assert score == 0
+    assert matched == []
+
+
+def test_matching_is_case_insensitive():
+    """A job shouting PYTHON should score the same as one whispering python."""
+    loud = filters.score_job(make_job(title="PYTHON DEVELOPER"), KEYWORDS)[0]
+    quiet = filters.score_job(make_job(title="python developer"), KEYWORDS)[0]
+
+    assert loud == quiet == 10
+
+
+def test_tag_match_is_worth_half_points():
+    """
+    This is the "Laborer bug" test.
+
+    A real RemoteOK listing for a warehouse Laborer job came back tagged
+    with "engineer", which made it score as highly as genuine engineering
+    roles. Tag matches are now worth half, so junk like this ranks lower.
+    """
+    job = make_job(title="Laborer", tags="engineer, data, ops")
+    score, matched = filters.score_job(job, KEYWORDS)
+
+    assert score == 2                     # engineer is 4, halved to 2
+    assert matched == ["engineer (tag)"]
+
+
+def test_title_beats_tags_for_the_same_word():
+    in_title = filters.score_job(make_job(title="Python Dev"), KEYWORDS)[0]
+    in_tags = filters.score_job(make_job(title="Dev", tags="python"), KEYWORDS)[0]
+
+    assert in_title > in_tags
+
+
+# ---------------------------------------------------------------------------
+# is_blocked
+# ---------------------------------------------------------------------------
+
+def test_blocked_word_in_title_is_caught():
+    assert filters.is_blocked(make_job(title="Senior Python Dev"), ["senior"])
+
+
+def test_clean_title_is_not_blocked():
+    assert not filters.is_blocked(make_job(title="Junior Python Dev"), ["senior"])
+
+
+def test_blocklist_only_looks_at_the_title():
+    """
+    A job tagged "senior" but titled "Junior Developer" should survive.
+    Plenty of junior postings mention senior staff in passing.
+    """
+    job = make_job(title="Junior Developer", tags="senior, mentoring")
+
+    assert not filters.is_blocked(job, ["senior"])
+
+
+# ---------------------------------------------------------------------------
+# filter_jobs
+# ---------------------------------------------------------------------------
+
+def test_low_scoring_jobs_are_dropped():
+    jobs = [
+        make_job(title="Python Engineer"),   # 14
+        make_job(title="Chef"),              # 0
+    ]
+    kept = filters.filter_jobs(jobs, KEYWORDS, blocklist=[], min_score=5)
+
+    assert len(kept) == 1
+    assert kept[0]["title"] == "Python Engineer"
+
+
+def test_results_are_sorted_best_first():
+    jobs = [
+        make_job(title="Engineer"),          # 4
+        make_job(title="Python Engineer"),   # 14
+        make_job(title="Junior Engineer"),   # 10
+    ]
+    kept = filters.filter_jobs(jobs, KEYWORDS, blocklist=[], min_score=0)
+
+    scores = [job["score"] for job in kept]
+    assert scores == [14, 10, 4]
+    assert scores == sorted(scores, reverse=True)
+
+
+def test_blocked_jobs_are_dropped_even_with_a_great_score():
+    jobs = [make_job(title="Senior Python Engineer")]   # would score 14
+    kept = filters.filter_jobs(jobs, KEYWORDS, ["senior"], min_score=0)
+
+    assert kept == []
+
+
+def test_original_jobs_are_never_modified():
+    """
+    filter_jobs copies each job before adding "score" to it.
+
+    If it did not, the caller's own data would get silently changed - the
+    kind of bug that takes hours to track down.
+    """
+    original = make_job(title="Python Engineer")
+    filters.filter_jobs([original], KEYWORDS, [], min_score=0)
+
+    assert "score" not in original
+
+
+def test_empty_input_gives_empty_output():
+    """Edge case: no jobs in should mean no jobs out, not a crash."""
+    assert filters.filter_jobs([], KEYWORDS, [], min_score=0) == []
+
+
+# ---------------------------------------------------------------------------
+# summarise
+# ---------------------------------------------------------------------------
+
+def test_summarise_counts_correctly():
+    scraped = [make_job(), make_job(), make_job()]
+    kept = filters.filter_jobs(
+        [make_job(title="Python Engineer")], KEYWORDS, [], min_score=0
+    )
+
+    stats = filters.summarise(scraped, kept)
+
+    assert stats["scraped"] == 3
+    assert stats["kept"] == 1
+    assert stats["dropped"] == 2
+    assert stats["top_score"] == 14
+    assert stats["by_source"] == {"test": 1}
+
+
+def test_summarise_handles_no_matches():
+    stats = filters.summarise([make_job()], [])
+
+    assert stats["kept"] == 0
+    assert stats["top_score"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Location filtering - the India logic
+# ---------------------------------------------------------------------------
+
+# Mirrors LOCATION_KEYWORDS in config.py, trimmed down for testing.
+PLACES = {
+    "india": 15, "bengaluru": 15,
+    "worldwide": 12, "anywhere": 12,   # We Work Remotely says "Anywhere in the World"
+    "apac": 10, "remote": 2,
+}
+
+
+def test_indian_city_scores_well():
+    score, matched = filters.score_location(
+        make_job(location="Bengaluru, Karnataka"), PLACES
+    )
+    assert score == 15
+    assert matched == ["bengaluru"]
+
+
+def test_us_only_job_scores_nothing_on_location():
+    """A real Remotive listing said "USA". That is a dead end from India."""
+    score, matched = filters.score_location(make_job(location="USA"), PLACES)
+
+    assert score == 0
+    assert matched == []
+
+
+def test_apac_counts_because_it_includes_india():
+    score, _ = filters.score_location(make_job(location="APAC"), PLACES)
+    assert score == 10
+
+
+def test_us_only_job_is_not_usable():
+    assert not filters.location_is_usable(make_job(location="United States"), PLACES)
+
+
+def test_worldwide_job_is_usable():
+    assert filters.location_is_usable(
+        make_job(location="Anywhere in the World"), PLACES
+    )
+
+
+def test_missing_location_is_kept_not_dropped():
+    """
+    Unknown is not the same as "no".
+
+    If a site left the location blank we keep the job, because throwing it
+    away over a missing field would lose real opportunities.
+    """
+    assert filters.location_is_usable(make_job(location="Not listed"), PLACES)
+    assert filters.location_is_usable(make_job(location=""), PLACES)
+
+
+def test_require_location_drops_us_only_jobs():
+    jobs = [
+        make_job(title="Python Engineer", location="United States"),
+        make_job(title="Python Engineer", location="Worldwide"),
+    ]
+    kept = filters.filter_jobs(
+        jobs, KEYWORDS, [], min_score=0,
+        location_keywords=PLACES, require_location=True,
+    )
+
+    assert len(kept) == 1
+    assert kept[0]["location"] == "Worldwide"
+
+
+def test_being_in_india_cannot_rescue_an_irrelevant_job():
+    """
+    The "Assembly Technician" test.
+
+    A real run put an Assembly Technician job in Chennai near the top,
+    because 15 location points beat genuine Python roles. Skills are now
+    checked BEFORE the location bonus is added, so this cannot happen.
+    """
+    jobs = [make_job(title="Assembly Technician", location="Bengaluru")]
+
+    kept = filters.filter_jobs(
+        jobs, KEYWORDS, [], min_score=0,
+        location_keywords=PLACES, require_location=True,
+        min_keyword_score=4,
+    )
+
+    assert kept == []
+
+
+def test_location_still_boosts_a_relevant_job():
+    """The flip side: a job you ARE suited for should rank higher in India."""
+    jobs = [make_job(title="Python Engineer", location="Bengaluru")]
+
+    kept = filters.filter_jobs(
+        jobs, KEYWORDS, [], min_score=0,
+        location_keywords=PLACES, require_location=True,
+        min_keyword_score=4,
+    )
+
+    assert len(kept) == 1
+    assert kept[0]["score"] == 29           # 14 for skills + 15 for the city
+    assert "bengaluru (place)" in kept[0]["matched"]
