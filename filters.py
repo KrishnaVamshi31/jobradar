@@ -14,6 +14,34 @@ All the keywords and blocked words live in config.py, so you can tune your
 job search without touching any code in here.
 """
 
+import re
+
+
+def matches(word, text):
+    """
+    Check whether `word` appears in `text` as a WHOLE word.
+
+    Why not just write `word in text`? Because plain substring matching is a
+    trap for short keywords, and we hit it for real:
+
+        "ai"   is inside "em-ai-l", "tr-ai-ning", "m-ai-ntenance"
+        "ml"   is inside "HT-ML"
+        "java" is inside "javascript"
+        "go"   is inside "algorithm"
+
+    An "Email Developer" job was already showing up in the results, and
+    adding "ai" as a keyword would have scored it as an AI role.
+
+    \\b means "word boundary" - the edge between a letter and a non-letter.
+    So \\bai\\b matches "AI Engineer" but not "Email Developer", and
+    \\bjava\\b matches "Java Developer" but not "JavaScript Developer".
+
+    re.escape() is there so that keywords containing punctuation, like
+    "node.js", are treated as literal text rather than regex symbols.
+    """
+    pattern = r"\b" + re.escape(word) + r"\b"
+    return re.search(pattern, text) is not None
+
 
 def score_job(job, keywords):
     """
@@ -46,11 +74,11 @@ def score_job(job, keywords):
     for word, points in keywords.items():
         word = word.lower()
 
-        # "in" checks whether the keyword appears anywhere in that text.
-        if word in title:
+        # Whole-word match, so "ai" cannot match "email". See matches().
+        if matches(word, title):
             total += points
             matched.append(word)
-        elif word in extra:
+        elif matches(word, extra):
             total += points // 2      # // divides and rounds down
             matched.append(word + " (tag)")
 
@@ -68,7 +96,7 @@ def is_blocked(job, blocklist):
     title = job.get("title", "").lower()
 
     for word in blocklist:
-        if word.lower() in title:
+        if matches(word.lower(), title):
             return True
 
     return False
@@ -99,7 +127,7 @@ def score_location(job, location_keywords):
     matched = []
 
     for word, points in location_keywords.items():
-        if word.lower() in location:
+        if matches(word.lower(), location):
             total += points
             matched.append(word)
 

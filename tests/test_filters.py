@@ -294,3 +294,69 @@ def test_location_still_boosts_a_relevant_job():
     assert len(kept) == 1
     assert kept[0]["score"] == 29           # 14 for skills + 15 for the city
     assert "bengaluru (place)" in kept[0]["matched"]
+
+
+# ---------------------------------------------------------------------------
+# Whole-word matching - short keywords like "ai" and "ml"
+# ---------------------------------------------------------------------------
+
+def test_ai_does_not_match_email():
+    """
+    The bug this prevents.
+
+    An "Email Developer" job was already in the results. Adding "ai" as a
+    keyword with plain substring matching would have scored it as an AI
+    role, because "ai" sits inside "em-ai-l".
+    """
+    assert not filters.matches("ai", "email developer")
+    assert not filters.matches("ai", "training specialist")
+    assert not filters.matches("ai", "maintenance engineer")
+
+
+def test_ai_still_matches_a_real_ai_job():
+    assert filters.matches("ai", "ai engineer")
+    assert filters.matches("ai", "senior ai/ml developer")
+
+
+def test_java_does_not_match_javascript():
+    """Two different languages. Substring matching cannot tell them apart."""
+    assert not filters.matches("java", "javascript developer")
+    assert filters.matches("java", "java backend developer")
+
+
+def test_ml_does_not_match_html():
+    assert not filters.matches("ml", "html and css developer")
+    assert filters.matches("ml", "ml engineer")
+
+
+def test_lead_does_not_match_leadership():
+    """
+    This used to need a hack: the blocklist stored "lead " with a trailing
+    space to avoid hitting "leadership". Whole-word matching removes the
+    need for that trick.
+    """
+    assert not filters.matches("lead", "leadership development program")
+    assert filters.matches("lead", "lead engineer")
+
+
+def test_keywords_with_punctuation_are_safe():
+    """
+    re.escape means a "." in a keyword is treated as a literal dot, not as
+    the regex wildcard that matches any character.
+    """
+    assert filters.matches("node.js", "node.js developer")
+    assert not filters.matches("node.js", "nodexjs developer")
+
+
+def test_multi_word_keywords_still_work():
+    assert filters.matches("machine learning", "machine learning engineer")
+    assert filters.matches("full stack", "full stack web developer")
+
+
+def test_ai_keyword_does_not_inflate_an_email_job():
+    """End to end: the Email Developer must not score as an AI role."""
+    keywords = {"ai": 12, "developer": 8}
+    score, matched = filters.score_job(make_job(title="Email Developer"), keywords)
+
+    assert score == 8
+    assert matched == ["developer"]

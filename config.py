@@ -38,35 +38,92 @@ JOBS_PER_SOURCE = 60
 # Edit this dictionary to match YOUR job hunt. That is the whole point.
 #   - Words you really want   -> big number  (10)
 #   - Words that are a bonus  -> small number (2 or 3)
+# Keywords are matched as WHOLE WORDS, so short ones like "ai" and "ml" are
+# safe here - "ai" will not match "email" or "training". See matches() in
+# filters.py for why that mattered.
 KEYWORDS = {
-    "python": 10,
-    "data": 8,
-    "backend": 7,
-    "automation": 7,
-    "junior": 6,
-    "intern": 6,
-    "entry level": 6,
-    "sql": 5,
-    "analyst": 5,
+    # --- AI and machine learning ---------------------------------------
+    "machine learning": 14,
+    "artificial intelligence": 14,
+    "ai": 12,
+    "genai": 12,
+    "generative ai": 12,
+    "llm": 12,
+    "deep learning": 12,
+    "ml": 10,
+    "nlp": 10,
+    "computer vision": 10,
+    "data science": 10,
+    "data scientist": 10,
+    "pytorch": 10,
+    "tensorflow": 10,
+
+    # --- Web development ------------------------------------------------
+    "full stack": 13,
+    "fullstack": 13,
+    "web developer": 13,
+    "react": 12,
+    "frontend": 11,
+    "front end": 11,
+    "backend": 11,
+    "back end": 11,
+    "javascript": 10,
+    "typescript": 10,
+    "node": 10,
+    "nodejs": 10,
+    "django": 10,
+    "angular": 8,
+    "vue": 8,
+    "flask": 8,
+    "fastapi": 8,
+    "api": 5,
+
+    # --- Core software --------------------------------------------------
+    "python": 14,
+    "software engineer": 13,
+    "software developer": 13,
+    "software": 8,
+    "programmer": 9,
+    "developer": 8,
+    "java": 8,           # whole-word, so this will NOT match "javascript"
+    "sql": 6,
+    "aws": 6,
+    "docker": 6,
     "engineer": 4,
-    "developer": 4,
-    "django": 4,
-    "flask": 3,
-    "api": 3,
-    "remote": 2,
+
+    # --- Your experience level -------------------------------------------
+    # You are early career, so these matter as much as the tech words.
+    "fresher": 14,       # very common phrasing in Indian job ads
+    "junior": 12,
+    "intern": 12,
+    "internship": 12,
+    "entry level": 12,
+    "trainee": 12,
+    "graduate": 10,
+    "associate": 6,
 }
 
 # Words that get a job thrown out no matter how good its score is.
-# Useful for filtering out roles you are not qualified for or do not want.
+# These are matched as whole words too, so "lead" will not hit "leadership".
 BLOCKLIST = [
-    "senior",
-    "staff",
-    "principal",
-    "lead ",     # note the trailing space, so it does not match "leadership"
-    "manager",
-    "director",
-    "head of",
+    # --- too senior for you right now ---
+    "senior", "sr", "staff", "principal", "lead", "manager", "director",
+    "head of", "vp", "vice president", "chief", "architect",
     "10+ years",
+
+    # --- not software, but kept sneaking into the results ---
+    # A "Junior Architect" in Chandigarh scored 36 before this list existed.
+    # It was a building architect, not a software one.
+    "civil", "mechanical", "electrical", "structural", "precast",
+    "costing", "laborer", "welder", "nurse", "teacher", "chef",
+    "driver", "accountant", "recruiter", "warehouse",
+
+    # --- tech-adjacent but not writing code ---
+    # These slipped in by matching "ai" or "engineer": a "Technical Product
+    # Marketer - K0rdent AI" is not a software job, whatever it matches.
+    "marketer", "marketing", "sales", "trainer", "scrum master",
+    "product manager", "product owner", "customer success",
+    "service desk", "help desk", "support specialist",
 ]
 
 # A job must score AT LEAST this many points from its TITLE AND TAGS before
