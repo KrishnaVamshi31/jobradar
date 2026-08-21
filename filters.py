@@ -153,9 +153,34 @@ def location_is_usable(job, location_keywords):
     return points > 0
 
 
+def score_level(job, level_keywords):
+    """
+    Score a job on how junior it is, separately from what it is.
+
+    This is a BONUS, never a qualification. "Fresher" tells you the level of
+    a role but nothing about the work - a "Content Writer (Fresher)" and a
+    "CA Fresher (Stat Audit)" both scored highly when level words counted
+    towards the skills gate, despite neither being a software job.
+    """
+    if not level_keywords:
+        return 0, []
+
+    haystack = (job.get("title", "") + " " + job.get("tags", "")).lower()
+
+    total = 0
+    matched = []
+
+    for word, points in level_keywords.items():
+        if matches(word.lower(), haystack):
+            total += points
+            matched.append(word)
+
+    return total, matched
+
+
 def filter_jobs(jobs, keywords, blocklist, min_score,
                 location_keywords=None, require_location=False,
-                min_keyword_score=0):
+                min_keyword_score=0, level_keywords=None):
     """
     Run the whole pipeline: score everything, drop the junk, sort the rest.
 
@@ -192,7 +217,12 @@ def filter_jobs(jobs, keywords, blocklist, min_score,
         if score < min_keyword_score:
             continue
 
-        # Step 5: now add the location bonus on top
+        # Step 5: add the bonuses on top - experience level, then location.
+        # Both only ever ADD to a job that already passed the skills gate.
+        level_points, level_matched = score_level(job, level_keywords)
+        score += level_points
+        matched.extend(word + " (level)" for word in level_matched)
+
         location_points, location_matched = score_location(job, location_keywords)
         score += location_points
         matched.extend(place + " (place)" for place in location_matched)

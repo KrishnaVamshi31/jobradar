@@ -90,9 +90,20 @@ KEYWORDS = {
     "aws": 6,
     "docker": 6,
     "engineer": 4,
+}
 
-    # --- Your experience level -------------------------------------------
-    # You are early career, so these matter as much as the tech words.
+
+# Experience-level words live in their OWN list, not in KEYWORDS above.
+#
+# Here is why. When "fresher" was a normal keyword, a "Content Writer
+# (Fresher / Entry Level)" job scored 41 and a "CA Fresher (Stat Audit)"
+# accounting job scored 29 - both purely on level words, with nothing
+# technical about them.
+#
+# Being junior is not a job description. So these are a BONUS applied only
+# after a job has already proved it is technical, exactly like the location
+# bonus below.
+LEVEL_KEYWORDS = {
     "fresher": 14,       # very common phrasing in Indian job ads
     "junior": 12,
     "intern": 12,
@@ -124,6 +135,10 @@ BLOCKLIST = [
     "marketer", "marketing", "sales", "trainer", "scrum master",
     "product manager", "product owner", "customer success",
     "service desk", "help desk", "support specialist",
+
+    # --- matched level words like "fresher" but are not software ---
+    "content writer", "copywriter", "professor", "lecturer", "tutor",
+    "audit", "auditor", "chartered accountant", "recruitment",
 ]
 
 # A job must score AT LEAST this many points from its TITLE AND TAGS before

@@ -360,3 +360,55 @@ def test_ai_keyword_does_not_inflate_an_email_job():
 
     assert score == 8
     assert matched == ["developer"]
+
+
+# ---------------------------------------------------------------------------
+# Level keywords - "fresher" is a bonus, never a qualification
+# ---------------------------------------------------------------------------
+
+LEVELS = {"fresher": 14, "junior": 12, "entry level": 12}
+
+
+def test_content_writer_fresher_does_not_qualify():
+    """
+    The "Content Writer (Fresher)" test.
+
+    A real Adzuna listing titled "Content Writer (Fresher / Entry Level)"
+    scored 41 when level words counted towards the skills gate, and a
+    "CA Fresher (Stat Audit)" accounting job scored 29. Neither is software.
+    Level words are now a bonus applied only after the skills gate.
+    """
+    jobs = [make_job(title="Content Writer (Fresher / Entry Level)")]
+
+    kept = filters.filter_jobs(
+        jobs, KEYWORDS, [], min_score=0,
+        min_keyword_score=4, level_keywords=LEVELS,
+    )
+
+    assert kept == []
+
+
+def test_level_still_boosts_a_real_tech_job():
+    """The flip side: a junior Python role should rank above a plain one."""
+    plain = filters.filter_jobs(
+        [make_job(title="Python Engineer")], KEYWORDS, [], min_score=0,
+        min_keyword_score=4, level_keywords=LEVELS,
+    )[0]["score"]
+
+    junior = filters.filter_jobs(
+        [make_job(title="Junior Python Engineer")], KEYWORDS, [], min_score=0,
+        min_keyword_score=4, level_keywords=LEVELS,
+    )[0]["score"]
+
+    assert junior > plain
+    assert junior == plain + 12 + 6   # junior bonus, plus "junior" as a keyword
+
+
+def test_level_words_are_labelled_in_the_output():
+    """So you can see WHY a job scored what it did."""
+    kept = filters.filter_jobs(
+        [make_job(title="Junior Python Developer")], KEYWORDS, [], min_score=0,
+        min_keyword_score=4, level_keywords=LEVELS,
+    )
+
+    assert "junior (level)" in kept[0]["matched"]
