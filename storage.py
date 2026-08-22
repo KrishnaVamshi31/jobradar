@@ -13,12 +13,15 @@ The trick is giving every job a stable ID:
     New job   ->  new ID   ->  we flag it for you
 
 We build that ID by hashing the job URL, because a URL is unique to a
-posting and does not change between runs.
+posting. Careful though - we hash the url WITHOUT its query string, because
+some sites put a fresh tracking token in there on every request. See
+normalise_url below for the bug that taught us this.
 """
 
 import hashlib
 import os
 from datetime import date
+from urllib.parse import urlsplit
 
 import pandas as pd
 
@@ -54,13 +57,48 @@ def make_job_id(job):
         "https://remoteok.com/jobs/123"  ->  "a3f5c9e102"
     """
     if job.get("url"):
-        raw = job["url"]
+        raw = normalise_url(job["url"])
     else:
         raw = job.get("source", "") + job.get("title", "") + job.get("company", "")
 
     # .encode() turns text into bytes, which is what hashlib needs.
     # We keep the first 10 characters - plenty to avoid collisions here.
     return hashlib.md5(raw.encode("utf-8")).hexdigest()[:10]
+
+
+def normalise_url(url):
+    """
+    Strip the tracking junk off a URL so the same job always hashes the same.
+
+    This fixes a bug that quietly broke the entire tracker. Adzuna hands back
+    a DIFFERENT url for the same job on every single request:
+
+        .../land/ad/5837138847?se=cgNb8NWd8RGU...&utm_medium=api
+        .../land/ad/5837138847?se=JuFAFNad8RGU...&utm_medium=api
+        .../land/ad/5837138847?se=KHzNDnad8RGf...&utm_medium=api
+
+    Same job - look at the ad number - but the "se" session token is new each
+    time. Hashing the whole url therefore produced a new ID every run, so
+    every job looked brand new, the history filled up with duplicates, and
+    the NEW badge became meaningless.
+
+    The part before the "?" is the bit that identifies the job, so that is
+    what we hash.
+
+    One caveat worth knowing: this assumes the job id lives in the PATH, not
+    in the query string, which is true for every source here. If you add a
+    site with urls like "example.com/jobs?id=123" then the query string IS
+    the identity, and stripping it would collapse every job on that site
+    into a single ID. The guard below catches the obvious version of that.
+    """
+    parts = urlsplit(url)
+
+    # No real path means everything meaningful was in the query string,
+    # so keep the url whole rather than throwing the identity away.
+    if not parts.path.strip("/"):
+        return url
+
+    return parts.scheme + "://" + parts.netloc + parts.path
 
 
 def load_history(csv_file):

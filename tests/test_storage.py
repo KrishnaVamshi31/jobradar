@@ -191,3 +191,72 @@ def test_saving_nothing_is_harmless(tmp_path):
     added = storage.save_jobs([], str(tmp_path / "j.csv"), str(tmp_path / "j.xlsx"))
 
     assert added == 0
+
+
+# ---------------------------------------------------------------------------
+# normalise_url - tracking tokens must not change a job's identity
+# ---------------------------------------------------------------------------
+
+def test_adzuna_session_token_does_not_change_the_id():
+    """
+    The duplicates bug.
+
+    Adzuna returns a different url for the same job on every request - only
+    the "se" session token changes. Hashing the whole url made every job
+    look new each run, so the history filled up with triplicates and the
+    NEW badge stopped meaning anything.
+    """
+    base = "https://www.adzuna.in/land/ad/5837138847"
+    first = make_job(url=base + "?se=cgNb8NWd8RGU&utm_medium=api")
+    second = make_job(url=base + "?se=JuFAFNad8RGU&utm_medium=api")
+    third = make_job(url=base + "?se=KHzNDnad8RGf&utm_medium=api")
+
+    ids = {
+        storage.make_job_id(first),
+        storage.make_job_id(second),
+        storage.make_job_id(third),
+    }
+
+    assert len(ids) == 1
+
+
+def test_genuinely_different_ads_still_differ():
+    """The fix must not go too far and merge two real jobs into one."""
+    a = make_job(url="https://www.adzuna.in/land/ad/111?se=x")
+    b = make_job(url="https://www.adzuna.in/land/ad/222?se=x")
+
+    assert storage.make_job_id(a) != storage.make_job_id(b)
+
+
+def test_url_with_no_path_keeps_its_query_string():
+    """
+    Guard against over-stripping.
+
+    If a site put the job id in the query string, throwing the query away
+    would collapse every job on that site into a single ID.
+    """
+    url = "https://example.com/?id=123"
+    assert storage.normalise_url(url) == url
+
+
+def test_urls_without_a_query_string_are_unchanged():
+    url = "https://remoteok.com/remote-jobs/some-job-123"
+    assert storage.normalise_url(url) == url
+
+
+def test_saving_the_same_adzuna_job_twice_makes_one_row(tmp_path):
+    """End to end: two runs, same job, one row in the history."""
+    csv_file = str(tmp_path / "jobs.csv")
+    excel_file = str(tmp_path / "jobs.xlsx")
+    base = "https://www.adzuna.in/land/ad/999"
+
+    monday = storage.tag_new_jobs([make_job(url=base + "?se=AAA")], set())
+    storage.save_jobs(monday, csv_file, excel_file)
+
+    seen = storage.load_history(csv_file)
+    tuesday = storage.tag_new_jobs([make_job(url=base + "?se=BBB")], seen)
+
+    assert tuesday[0]["is_new"] is False      # recognised despite a new token
+
+    storage.save_jobs(tuesday, csv_file, excel_file)
+    assert len(pd.read_csv(csv_file)) == 1
