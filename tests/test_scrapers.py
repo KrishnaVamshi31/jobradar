@@ -119,3 +119,42 @@ def test_every_scraper_returns_the_same_keys():
 def test_missing_location_gets_a_readable_default():
     job = scrapers.make_job("T", "C", "", "https://x.com", "test")
     assert job["location"] == "Not listed"
+
+
+# ---------------------------------------------------------------------------
+# Telegram credential checks - catching easy mistakes early
+# ---------------------------------------------------------------------------
+
+import notify
+
+
+def test_chat_id_with_an_at_sign_is_rejected():
+    """
+    The most likely setup mistake.
+
+    A chat id is a number. "@name" is a username, which Telegram only
+    accepts for public channels - never for messaging a person. Telegram
+    replies "chat not found" with no explanation, so we catch it first.
+    """
+    problem = notify.check_credentials("812345:AAF1a2", "@krishnavamshi")
+
+    assert "@" in problem
+    assert "number" in problem.lower()
+
+
+def test_a_normal_chat_id_is_accepted():
+    assert notify.check_credentials("812345:AAF1a2", "987654321") == ""
+
+
+def test_a_group_chat_id_is_accepted():
+    """Group chats have negative ids. That is normal, not an error."""
+    assert notify.check_credentials("812345:AAF1a2", "-1001234567890") == ""
+
+
+def test_a_mangled_token_is_rejected():
+    problem = notify.check_credentials("notatoken", "987654321")
+    assert "token" in problem.lower()
+
+
+def test_missing_credentials_are_reported():
+    assert notify.check_credentials("", "") != ""

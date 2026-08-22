@@ -68,6 +68,47 @@ def is_configured():
     return bool(token and chat_id)
 
 
+def check_credentials(token, chat_id):
+    """
+    Catch the mistakes that are easy to make and hard to diagnose.
+
+    Returns a problem description, or "" if everything looks right.
+
+    The @ one is the common trap. A chat id is a NUMBER, like 987654321.
+    An "@name" is a username, and Telegram only accepts those for public
+    channels - never for messaging a person. Without this check you get a
+    bare "Bad Request: chat not found" and no clue why.
+    """
+    if not token:
+        return "No bot token. Run: python notify.py --setup"
+
+    if not chat_id:
+        return "No chat id. Run: python notify.py --setup"
+
+    if chat_id.startswith("@"):
+        return (
+            "Your chat id starts with '@'. It should be a plain number like "
+            "987654321 - '@name' is a username, which only works for public "
+            "channels, not for messaging you. Run: python notify.py --setup"
+        )
+
+    # A negative id is fine - that is what group chats look like.
+    if not chat_id.lstrip("-").isdigit():
+        return (
+            "Your chat id should be only digits (a leading minus is fine for "
+            "groups), but it is: " + chat_id
+        )
+
+    # Tokens look like  8123456789:AAF1a2B3...
+    if ":" not in token:
+        return (
+            "That does not look like a bot token. BotFather gives you "
+            "something like 8123456789:AAF1a2B3c4D5e6F7g8H9i0"
+        )
+
+    return ""
+
+
 def send(text):
     """
     Send one message to your Telegram.
@@ -257,11 +298,11 @@ def main():
         return
 
     if args.test:
-        if not is_configured():
-            print(
-                "Telegram is not set up yet.\n"
-                "Run:  python notify.py --setup"
-            )
+        token, chat_id = load_credentials()
+
+        problem = check_credentials(token, chat_id)
+        if problem:
+            print("\n" + problem + "\n")
             sys.exit(1)
 
         if send("<b>JobRadar</b>\n\nTelegram alerts are working."):

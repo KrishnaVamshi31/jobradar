@@ -239,6 +239,12 @@ keep working - and the push notification lands on your phone the same way.
 6. Save both values in `telegram_key.txt`, token on line 1, chat id on line 2
 7. Test with `python notify.py --test`
 
+Your chat id is a plain **number** like `987654321` - **no `@`**. An
+`@name` is a username, which Telegram only accepts for public channels,
+never for messaging a person. A negative number is fine; that is a group
+chat. `notify.py` checks for this and says so rather than letting Telegram
+reply with an unexplained "chat not found".
+
 For the cloud runs, add the same two values as repository secrets named
 `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`, under
 **Settings → Secrets and variables → Actions**. Adzuna goes in the same
@@ -290,10 +296,10 @@ python -m pytest
 ```
 
 ```
-75 passed
+80 passed
 ```
 
-75 tests covering scoring, whole-word matching, the blocklist, the level and
+80 tests covering scoring, whole-word matching, the blocklist, the level and
 location rules, the ID fingerprints, and a full save-and-read-back round
 trip. They use temporary folders, so running them never touches your real
 `data/`. Several are named after bugs that actually happened — see below.
