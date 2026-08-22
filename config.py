@@ -119,7 +119,7 @@ LEVEL_KEYWORDS = {
 BLOCKLIST = [
     # --- too senior for you right now ---
     "senior", "sr", "staff", "principal", "lead", "manager", "director",
-    "head of", "vp", "vice president", "chief", "architect",
+    "head of", "vp", "avp", "svp", "vice president", "chief", "architect",
     "10+ years",
 
     # --- not software, but kept sneaking into the results ---

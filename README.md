@@ -7,35 +7,40 @@ choose, filters out roles that will not hire from your country, remembers
 everything it has seen before, and tells you which jobs are **new since your
 last run**.
 
-Python. Roughly 900 lines across five small files, each with one job.
+Python. About 1,700 lines across six small files, each with one job.
+
+Real output from a live run:
 
 ```
 JobRadar -- scanning job boards
 
-1. Scraping 5 source(s), up to 50 jobs each
-  OK     remoteok         50 jobs
-  OK     weworkremotely   50 jobs
+1. Scraping 5 source(s), up to 60 jobs each
+  OK     remoteok         60 jobs
+  OK     weworkremotely   60 jobs
   OK     remotive         18 jobs
   OK     himalayas        20 jobs
-  OK     adzuna           35 jobs
+  OK     adzuna           50 jobs
 
-2. Scoring 173 jobs against 15 keywords
-  OK     kept 24, dropped 149 below score 6 or blocklisted
+2. Scoring 208 jobs against 43 keywords
+  OK     kept 13, dropped 195 below score 6 or blocklisted
 
 3. Comparing against previous runs
-  OK     112 jobs already in history, 9 new
+  OK     0 jobs already in history, 13 new
 
 4. Saving results
-  OK     added 9 new rows
+  OK     added 13 new rows
 
- Score | Title                        | Location              | Source
--------+------------------------------+-----------------------+---------------
-    29 | Python Developer             | Bengaluru, Karnataka  | adzuna
-    23 | Backend Engineer (Django)    | Hyderabad, Telangana  | adzuna
-    16 | DevOps & Security Engineer   | Anywhere in the World | weworkremotely
-    16 | Tier III Service Desk Eng.   | Worldwide             | remotive
+ Score | Title                                | Location              | Source
+-------+-------------------------------------+-----------------------+---------------
+    53 | Full Stack Software Engineer        | India                 | adzuna
+    53 | Software Engineer - Full Stack Dev   | Bangalore, Karnataka  | adzuna
+    49 | .Net Python - AI Claude Developer   | Mumbai, Maharashtra   | adzuna
+    48 | Backend Developer - Python          | Bangalore, Karnataka  | adzuna
+    35 | AI and Automation Developer         | Bangalore, Karnataka  | adzuna
+    31 | AI Engineer                         | Hyderabad, Telangana  | adzuna
+    28 | DevOps & Security Engineer          | Anywhere in the World | weworkremotely
 
-24 jobs matched out of 173 scraped  (9 new since last run)
+13 jobs matched out of 208 scraped  (13 new since last run)
 ```
 
 ---
@@ -111,25 +116,33 @@ it afterwards.
 Open **`config.py`**. It is the only file you need to touch.
 
 ```python
-KEYWORDS = {
-    "python": 10,      # words you really want  -> big number
-    "junior": 6,
-    "sql": 5,
+KEYWORDS = {              # the skills gate - only these can qualify a job
+    "python": 14,
+    "machine learning": 14,
+    "full stack": 13,
+    "react": 12,
+    "ai": 12,             # safe: whole-word, so it will not match "email"
 }
 
-BLOCKLIST = ["senior", "manager", "10+ years"]
+LEVEL_KEYWORDS = {        # bonus only, applied after the gate
+    "fresher": 14,
+    "junior": 12,
+}
 
-MIN_KEYWORD_SCORE = 4   # skills bar, checked before location
-MIN_SCORE = 6           # total bar, after the location bonus
+BLOCKLIST = ["senior", "manager", "architect", "content writer"]
+
+MIN_KEYWORD_SCORE = 4     # skills bar, checked before any bonus
+MIN_SCORE = 6             # total bar, after level and location bonuses
 
 REQUIRE_LOCATION_MATCH = True   # drop jobs that will not hire from India
 ```
 
-The default keywords are generic. **Replace them with words from jobs you
-would actually apply to** — your languages, your level, your city. That is
-what turns this from a demo into a tool.
+Currently tuned for **AI, web development and general software roles**.
+Adjust the numbers to match the jobs you actually want — that is what turns
+this from a demo into a tool.
 
 Too few results? Lower `MIN_SCORE`, or set `REQUIRE_LOCATION_MATCH = False`.
+
 
 ---
 
@@ -212,16 +225,35 @@ python -m pytest
 ```
 
 ```
-38 passed
+49 passed
 ```
 
-38 tests covering scoring, the blocklist, the location rules, the ID
-fingerprints, and a full save-and-read-back round trip. They use temporary
-folders, so running them never touches your real `data/`.
+49 tests covering scoring, whole-word matching, the blocklist, the level and
+location rules, the ID fingerprints, and a full save-and-read-back round
+trip. They use temporary folders, so running them never touches your real
+`data/`. Several are named after bugs that actually happened — see below.
 
 ---
 
-## Three problems worth writing about
+## How scoring works: three tiers
+
+The single most important idea in this project. A job is judged on three
+separate things, and **only the first one can qualify it**:
+
+| Tier | Source | Role |
+|------|--------|------|
+| **Skills** | `KEYWORDS` | The gate. Fail here and you are out. |
+| **Level** | `LEVEL_KEYWORDS` | Bonus only. Applied after the gate. |
+| **Location** | `LOCATION_KEYWORDS` | Bonus, plus a hard filter on countries. |
+
+Both bonus tiers started life inside `KEYWORDS`, and both caused the same
+bug: something that was not a software job climbed to the top of the list
+by scoring on a tier that says nothing about the work. Being in Bengaluru
+is not a skill. Being a fresher is not a skill.
+
+---
+
+## Five problems worth writing about
 
 **Tag spam was ruining the rankings.** The first working version scored a
 warehouse **"Laborer"** job as highly as real Python roles, because RemoteOK
@@ -237,6 +269,23 @@ Technician"** role in Chennai scored 15 points just for being in India and
 outranked genuine Python jobs. Fix: skills are now a *gate* checked before
 the location bonus is added, so a convenient location can improve a job's
 ranking but can never rescue one you are not suited for.
+
+**"Fresher" is not a job description.** Same bug, third appearance. Once
+level words like `fresher` and `entry level` were keywords, a **"Content
+Writer (Fresher / Entry Level)"** scored 41 and a **"CA Fresher (Stat
+Audit)"** — an accounting role — scored 29. Neither involves writing code.
+Level words moved into their own tier, applied only after the skills gate.
+Noticing it was the *same* mistake as the Chennai one is the useful part:
+any tier that describes something other than the work has to be a bonus.
+
+**Substring matching quietly breaks short keywords.** Adding AI keywords
+meant adding `"ai"` — which, with plain `in` matching, appears inside
+**em*ai*l**, **tr*ai*ning** and **m*ai*ntenance**. There was already an
+"Email Developer" in the results that would have scored as an AI role.
+`"ml"` matched **HT*ML***, and `"java"` matched **javascript** — two
+different languages. Fixed by matching on word boundaries with
+`\bword\b`, which also retired an earlier hack where the blocklist stored
+`"lead "` with a trailing space to avoid hitting "leadership".
 
 **A function was secretly depending on another one.** `save_jobs()` needed
 every job to already have an ID, which `main.py` happened to add one step
