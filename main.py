@@ -190,7 +190,9 @@ def send_alert(new_jobs):
         return
 
     if notify.send(notify.format_new_jobs(new_jobs)):
-        report.console.print(f"[green]Alerted you about {len(new_jobs)} new jobs.[/green]\n")
+        count = len(new_jobs)
+        plural = "job" if count == 1 else "jobs"
+        report.console.print(f"[green]Alerted you about {count} new {plural}.[/green]\n")
     else:
         # A failed notification must not fail the scan - the jobs are
         # already saved, and you can still read the report.
