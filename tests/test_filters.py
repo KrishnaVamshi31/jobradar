@@ -412,3 +412,77 @@ def test_level_words_are_labelled_in_the_output():
     )
 
     assert "junior (level)" in kept[0]["matched"]
+
+
+# ---------------------------------------------------------------------------
+# Keywords containing punctuation
+# ---------------------------------------------------------------------------
+
+def test_punctuation_edged_keywords_match():
+    """
+    These failed SILENTLY before, which is the worst kind of failure.
+
+    A \b word boundary only exists next to a letter or digit, so a keyword
+    starting or ending with punctuation never matched anything - no error,
+    the jobs just quietly scored zero. You already had a ".NET Python - AI
+    Developer" job that was affected.
+    """
+    assert filters.matches("c++", "c++ developer")
+    assert filters.matches("c#", "c# developer")
+    assert filters.matches(".net", ".net backend developer")
+    assert filters.matches("node.js", "node.js developer")
+
+
+def test_punctuation_fix_did_not_break_normal_words():
+    assert not filters.matches("ai", "email developer")
+    assert not filters.matches("java", "javascript developer")
+
+
+# ---------------------------------------------------------------------------
+# Overlapping keywords must not stack
+# ---------------------------------------------------------------------------
+
+def test_a_phrase_is_not_counted_three_times():
+    """
+    "Software Engineer" used to score for "software engineer", AND
+    "software", AND "engineer" - three hits for one phrase. That inflation
+    pushed "Java Software Engineer" above "Machine Learning Engineer",
+    which is backwards when AI is the priority.
+    """
+    keywords = {"software engineer": 14, "software": 10, "engineer": 4}
+    score, matched = filters.score_job(
+        make_job(title="Software Engineer"), keywords
+    )
+
+    assert score == 14
+    assert matched == ["software engineer"]
+
+
+def test_non_overlapping_keywords_still_add_up():
+    """The fix must not stop genuinely separate keywords from combining."""
+    keywords = {"python": 16, "developer": 10}
+    score, _ = filters.score_job(make_job(title="Python Developer"), keywords)
+
+    assert score == 26
+
+
+def test_ai_roles_outrank_plain_software_roles():
+    """The whole point of the retune, locked in as a test."""
+    ml = filters.score_job(
+        make_job(title="Machine Learning Engineer"), config_keywords()
+    )[0]
+    java = filters.score_job(
+        make_job(title="Java Software Engineer"), config_keywords()
+    )[0]
+    web = filters.score_job(
+        make_job(title="React Frontend Developer"), config_keywords()
+    )[0]
+
+    assert ml > java
+    assert ml > web
+
+
+def config_keywords():
+    """Read the real KEYWORDS out of config, so this test tracks reality."""
+    import config
+    return config.KEYWORDS

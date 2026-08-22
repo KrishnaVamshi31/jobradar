@@ -38,8 +38,23 @@ def matches(word, text):
 
     re.escape() is there so that keywords containing punctuation, like
     "node.js", are treated as literal text rather than regex symbols.
+
+    One wrinkle, found the hard way. A \\b boundary only exists next to a
+    LETTER or DIGIT. So keywords that start or end with punctuation were
+    silently never matching anything:
+
+        "c++"   ended with "+"  ->  never matched "C++ Developer"
+        "c#"    ended with "#"  ->  never matched "C# Developer"
+        ".net"  started with "." ->  never matched ".NET Developer"
+
+    They failed quietly, which is the worst way to fail - no error, the jobs
+    just never scored. So we only add \\b on an edge that is actually a
+    letter or digit.
     """
-    pattern = r"\b" + re.escape(word) + r"\b"
+    prefix = r"\b" if word[:1].isalnum() else ""
+    suffix = r"\b" if word[-1:].isalnum() else ""
+
+    pattern = prefix + re.escape(word) + suffix
     return re.search(pattern, text) is not None
 
 
@@ -70,17 +85,33 @@ def score_job(job, keywords):
 
     total = 0
     matched = []
+    counted = []      # the keyword texts we have already scored
 
-    for word, points in keywords.items():
+    # Longest keywords first. That order is what makes the overlap check
+    # below work: "software engineer" gets considered before "software".
+    for word in sorted(keywords, key=len, reverse=True):
+        points = keywords[word]
         word = word.lower()
+
+        # Skip a keyword that is just a piece of one we already counted.
+        #
+        # Without this, the title "Software Engineer" scores three times for
+        # a single phrase - once for "software engineer", again for
+        # "software", again for "engineer". That inflation made
+        # "Java Software Engineer" outrank "Machine Learning Engineer",
+        # which is backwards if AI is what you actually want.
+        if any(word in bigger for bigger in counted):
+            continue
 
         # Whole-word match, so "ai" cannot match "email". See matches().
         if matches(word, title):
             total += points
             matched.append(word)
+            counted.append(word)
         elif matches(word, extra):
             total += points // 2      # // divides and rounds down
             matched.append(word + " (tag)")
+            counted.append(word)
 
     return total, matched
 
