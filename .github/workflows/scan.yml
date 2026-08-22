@@ -1,0 +1,79 @@
+# Scans the job boards every two hours and pings your Telegram, but ONLY
+# when something new has actually appeared.
+#
+# Why two hours and not one: job boards do not post that often. Adzuna
+# refreshes roughly daily, so an hourly scan would spend most of its runs
+# finding nothing. Every two hours catches new postings quickly without
+# burning runs for no reason.
+#
+# Why "only if new": a message every two hours saying "nothing new" is
+# noise, and you would mute the chat within a day. Silence means nothing
+# has changed.
+
+name: Job scan
+
+on:
+  schedule:
+    # Every 2 hours, on the hour. GitHub schedules always run in UTC.
+    - cron: "0 */2 * * *"
+
+  workflow_dispatch:   # adds a "Run workflow" button in the Actions tab
+
+permissions:
+  contents: write
+
+# If a scan is somehow still running when the next one fires, let the first
+# one finish rather than having two of them fight over the same commit.
+concurrency:
+  group: job-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run the tests first
+        # If the tests fail, stop before saving anything or sending alerts.
+        run: python -m pytest -q
+
+      - name: Scan the job boards and alert on anything new
+        env:
+          # From Settings -> Secrets and variables -> Actions.
+          # Any that are missing just switch that feature off quietly.
+          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main.py --notify
+
+      - name: Commit the updated job list
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # data/ is gitignored for local use, so -f forces these in.
+          git add -f data/jobs.csv data/jobs.xlsx
+
+          if git diff --staged --quiet; then
+            echo "No new jobs, nothing to commit."
+          else
+            git commit -m "Job scan: $(date -u '+%Y-%m-%d %H:%M') UTC"
+
+            # Another scan may have pushed while we were running, so rebase
+            # onto whatever is there rather than failing outright.
+            git pull --rebase --autostash
+            git push
+          fi

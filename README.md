@@ -210,17 +210,76 @@ genuinely new and gets a green **NEW** badge.
 
 ---
 
-## Running it automatically
+## Phone alerts and the daily round-up
 
-`.github/workflows/daily.yml` makes GitHub run the scraper at **9am IST**
-every day, on their machines, and commit the results back here. Your laptop
-can be closed.
+Two workflows run on GitHub's machines, so your laptop can be closed.
 
-To use the Adzuna source there, add your key under
-**Settings → Secrets and variables → Actions** as `ADZUNA_APP_ID` and
-`ADZUNA_APP_KEY`. Without them, that source just skips.
+| Workflow | When | What it does |
+|----------|------|--------------|
+| `scan.yml` | every 2 hours | Scrapes, and pings Telegram **only if something new turned up** |
+| `summary.yml` | 9pm IST | Sends what you applied to today, and what is still waiting |
 
-You can also trigger it by hand from the **Actions** tab.
+Silence means nothing changed. A "nothing new" message every two hours is
+noise you would mute within a day.
+
+Two hours rather than one is deliberate: job boards do not post that
+often, so an hourly scan would spend most of its runs finding nothing.
+
+### Setting up Telegram (about five minutes, free)
+
+WhatsApp needs Meta business verification or a paid Twilio account whose
+free sandbox disconnects every 72 hours. Telegram bots are free and just
+keep working - and the push notification lands on your phone the same way.
+
+1. Open Telegram, search for **@BotFather**, send `/newbot`
+2. Pick a name, then a username ending in `bot`
+3. Copy the token he gives you
+4. Send any message to your new bot, so it is allowed to reply
+5. Run `python notify.py --setup` - it finds your chat id for you
+6. Save both values in `telegram_key.txt`, token on line 1, chat id on line 2
+7. Test with `python notify.py --test`
+
+For the cloud runs, add the same two values as repository secrets named
+`TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`, under
+**Settings → Secrets and variables → Actions**. Adzuna goes in the same
+place as `ADZUNA_APP_ID` and `ADZUNA_APP_KEY`. Anything missing simply
+switches that feature off - nothing crashes.
+
+`telegram_key.txt` is gitignored, like the Adzuna key.
+
+---
+
+## Tracking what you have applied to
+
+JobRadar cannot know you applied to something - nothing visible from the
+outside says whether you filled in a form on a company website. So you tell
+it, and the evening summary reports it back.
+
+Open **`data/jobs.xlsx`**. Column A is **status**, a dropdown with three
+choices:
+
+| Status | Meaning |
+|--------|---------|
+| `new` | where every job starts |
+| `applied` | you sent an application |
+| `skipped` | you looked and decided no |
+
+Pick one, save, and that is it. Scans rewrite that file every two hours but
+your choices are read back first and preserved, so they survive.
+
+Want the cloud summary to know too? Commit and push the file:
+
+```bash
+git add -f data/jobs.xlsx data/jobs.csv
+git commit -m "Applied to a few"
+git push
+```
+
+See it any time without waiting for 9pm:
+
+```bash
+python summary.py --print
+```
 
 ---
 
@@ -231,10 +290,10 @@ python -m pytest
 ```
 
 ```
-70 passed
+75 passed
 ```
 
-70 tests covering scoring, whole-word matching, the blocklist, the level and
+75 tests covering scoring, whole-word matching, the blocklist, the level and
 location rules, the ID fingerprints, and a full save-and-read-back round
 trip. They use temporary folders, so running them never touches your real
 `data/`. Several are named after bugs that actually happened — see below.

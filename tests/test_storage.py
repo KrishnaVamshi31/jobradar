@@ -260,3 +260,86 @@ def test_saving_the_same_adzuna_job_twice_makes_one_row(tmp_path):
 
     storage.save_jobs(tuesday, csv_file, excel_file)
     assert len(pd.read_csv(csv_file)) == 1
+
+
+# ---------------------------------------------------------------------------
+# status - the applied tick-box, which must survive a rescan
+# ---------------------------------------------------------------------------
+
+def test_new_jobs_start_as_new(tmp_path):
+    csv_file = str(tmp_path / "jobs.csv")
+    storage.save_jobs([make_job()], csv_file, str(tmp_path / "jobs.xlsx"))
+
+    assert pd.read_csv(csv_file).iloc[0]["status"] == "new"
+
+
+def test_marking_applied_survives_the_next_scan(tmp_path):
+    """
+    The promise the whole tick-box rests on.
+
+    Scans run every two hours and rewrite both files. If your edit did not
+    survive that, you would tick "applied" in the morning and find it gone
+    by lunchtime - worse than having no feature at all.
+    """
+    csv_file = str(tmp_path / "jobs.csv")
+    excel_file = str(tmp_path / "jobs.xlsx")
+    job = make_job()
+
+    storage.save_jobs([job], csv_file, excel_file)
+
+    # You open the spreadsheet and mark it applied.
+    table = pd.read_csv(csv_file)
+    table.loc[0, "status"] = "applied"
+    table.to_csv(csv_file, index=False)
+
+    # Two hours later the scanner runs again and finds the same job.
+    storage.save_jobs([job], csv_file, excel_file)
+
+    assert pd.read_csv(csv_file).iloc[0]["status"] == "applied"
+
+
+def test_an_excel_edit_is_picked_up(tmp_path):
+    """
+    A decision made in the spreadsheet must be read back, even though the
+    CSV still says "new" - because "new" is only a default, not a choice.
+    """
+    csv_file = str(tmp_path / "jobs.csv")
+    excel_file = str(tmp_path / "jobs.xlsx")
+    job = make_job()
+
+    storage.save_jobs([job], csv_file, excel_file)
+
+    # Mark it applied in the spreadsheet only.
+    sheet = pd.read_excel(excel_file)
+    sheet.loc[0, "status"] = "applied"
+    sheet.to_excel(excel_file, sheet_name="Jobs", index=False)
+
+    statuses = storage.load_statuses(csv_file, excel_file)
+
+    assert statuses[storage.make_job_id(job)] == "applied"
+
+
+def test_marking_applied_does_not_leak_onto_other_jobs(tmp_path):
+    csv_file = str(tmp_path / "jobs.csv")
+    excel_file = str(tmp_path / "jobs.xlsx")
+
+    first = make_job(url="https://example.com/a")
+    second = make_job(url="https://example.com/b")
+    storage.save_jobs([first, second], csv_file, excel_file)
+
+    table = pd.read_csv(csv_file)
+    table.loc[table["id"] == storage.make_job_id(first), "status"] = "applied"
+    table.to_csv(csv_file, index=False)
+
+    storage.save_jobs([first, second], csv_file, excel_file)
+
+    saved = pd.read_csv(csv_file).set_index("id")["status"]
+    assert saved[storage.make_job_id(first)] == "applied"
+    assert saved[storage.make_job_id(second)] == "new"
+
+
+def test_missing_status_file_does_not_crash(tmp_path):
+    """Before the very first scan there is nothing to read."""
+    assert storage.load_statuses(
+        str(tmp_path / "nope.csv"), str(tmp_path / "nope.xlsx")
+    ) == {}

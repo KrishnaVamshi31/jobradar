@@ -20,6 +20,7 @@ import sys
 
 import config
 import filters
+import notify
 import report
 import scrapers
 import storage
@@ -71,6 +72,11 @@ def parse_arguments():
         "--open",
         action="store_true",
         help="Open the HTML report in your browser when finished.",
+    )
+    parser.add_argument(
+        "--notify",
+        action="store_true",
+        help="Send a Telegram alert if any NEW jobs were found.",
     )
 
     return parser.parse_args()
@@ -160,7 +166,35 @@ def run(args):
         )
         report.console.print(f"[dim]Full report: {path}[/dim]\n")
 
+    # --- Step 6: notify --------------------------------------------------
+    # Only ever message about jobs that are actually NEW. A scan runs every
+    # couple of hours, and most of those find nothing - a notification each
+    # time would be pure noise, and you would mute it within a day.
+    if args.notify:
+        send_alert([job for job in matched if job.get("is_new")])
+
     return new_count
+
+
+def send_alert(new_jobs):
+    """Send a Telegram alert, if there is anything worth saying."""
+    if not new_jobs:
+        report.console.print("[dim]Nothing new, so no alert sent.[/dim]\n")
+        return
+
+    if not notify.is_configured():
+        report.console.print(
+            "[yellow]Telegram not set up, skipping alert.[/yellow] "
+            "[dim]Run python notify.py --setup[/dim]\n"
+        )
+        return
+
+    if notify.send(notify.format_new_jobs(new_jobs)):
+        report.console.print(f"[green]Alerted you about {len(new_jobs)} new jobs.[/green]\n")
+    else:
+        # A failed notification must not fail the scan - the jobs are
+        # already saved, and you can still read the report.
+        report.console.print("[yellow]Could not send the Telegram alert.[/yellow]\n")
 
 
 def main():

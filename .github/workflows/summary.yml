@@ -1,0 +1,41 @@
+# Sends the end-of-day round-up: what you applied to, and what is still
+# sitting there waiting for you.
+#
+# The "still waiting" half is the point. It is easy to let a good job sit
+# untouched for a week.
+#
+# Where the applied information comes from: the status column in
+# data/jobs.xlsx, which you tick yourself and push. JobRadar has no way of
+# knowing you filled in a form on a company website.
+
+name: Daily summary
+
+on:
+  schedule:
+    # 15:30 UTC is 21:00 in India (IST is UTC+5:30) - end of the day.
+    - cron: "30 15 * * *"
+
+  workflow_dispatch:
+
+jobs:
+  summarise:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Send the summary
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python summary.py

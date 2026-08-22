@@ -15,6 +15,7 @@ data/*.html
 # API keys - NEVER commit these. Anything pushed to GitHub is public
 # forever, even if you delete it later.
 adzuna_key.txt
+telegram_key.txt
 *.key
 .env
 

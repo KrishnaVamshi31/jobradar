@@ -24,10 +24,14 @@ from datetime import date
 from urllib.parse import urlsplit
 
 import pandas as pd
+from openpyxl.worksheet.datavalidation import DataValidation
 
 # The order columns appear in the CSV and Excel file. Putting the useful
 # stuff first means you do not have to scroll sideways in Excel.
 COLUMNS = [
+    # status is deliberately the FIRST column, so it lands in column A of
+    # the spreadsheet where it is easiest to edit.
+    "status",
     "first_seen",
     "score",
     "title",
@@ -64,6 +68,64 @@ def make_job_id(job):
     # .encode() turns text into bytes, which is what hashlib needs.
     # We keep the first 10 characters - plenty to avoid collisions here.
     return hashlib.md5(raw.encode("utf-8")).hexdigest()[:10]
+
+
+# The three things a job can be. "new" is where everything starts.
+STATUS_VALUES = ["new", "applied", "skipped"]
+DEFAULT_STATUS = "new"
+
+
+def load_statuses(csv_file, excel_file):
+    """
+    Read the status you have set against each job, keyed by job ID.
+
+    This is what makes the Excel tick-box work. Every scan rewrites both
+    files, so without reading your edits back first, ticking "applied" in
+    the spreadsheet would be wiped out a couple of hours later.
+
+    We read both files, and the rule for disagreements is:
+
+        a real decision always beats the default
+
+    "new" is not something you chose - it is just where every job starts.
+    So if either file says "applied", the job is applied. That way it does
+    not matter whether you edited the spreadsheet or the CSV.
+
+    An earlier version simply let the spreadsheet win, which broke the
+    moment you edited the CSV instead: the untouched spreadsheet still said
+    "new" and silently undid your edit.
+    """
+    statuses = {}
+
+    for path, read in ((csv_file, pd.read_csv), (excel_file, pd.read_excel)):
+        if not os.path.exists(path):
+            continue
+
+        try:
+            table = read(path)
+        except Exception:
+            # A file open in Excel, or half-written, should not stop a scan.
+            continue
+
+        if "id" not in table.columns or "status" not in table.columns:
+            continue
+
+        for job_id, status in zip(table["id"], table["status"]):
+            text = str(status).strip().lower()
+
+            # Blank cells read back as the string "nan" from pandas.
+            if not text or text == "nan":
+                continue
+
+            already = statuses.get(str(job_id))
+
+            # Never let the default overwrite a decision you actually made.
+            if already and already != DEFAULT_STATUS and text == DEFAULT_STATUS:
+                continue
+
+            statuses[str(job_id)] = text
+
+    return statuses
 
 
 def normalise_url(url):
@@ -165,6 +227,10 @@ def save_jobs(jobs, csv_file, excel_file):
     if folder:
         os.makedirs(folder, exist_ok=True)
 
+    # Read your "applied" ticks BEFORE we overwrite anything. Getting this
+    # order wrong would quietly destroy them on every scan.
+    saved_statuses = load_statuses(csv_file, excel_file)
+
     # Make sure every job has an ID before we go any further, because the
     # duplicate check below relies on it.
     #
@@ -208,6 +274,12 @@ def save_jobs(jobs, csv_file, excel_file):
     combined = pd.concat([old, fresh], ignore_index=True)
     combined = combined.drop_duplicates(subset=["id"], keep="first")
 
+    # Put your own status back on top of the fresh data. Any job we have
+    # not heard about starts life as "new".
+    combined["status"] = (
+        combined["id"].astype(str).map(saved_statuses).fillna(DEFAULT_STATUS)
+    )
+
     # Put the columns in our preferred order. We only ask for columns that
     # actually exist, so this cannot crash if a field is missing.
     ordered = [c for c in COLUMNS if c in combined.columns]
@@ -245,12 +317,34 @@ def write_excel(dataframe, excel_file):
 
         # Set a sensible width for each column, based on its name.
         widths = {
-            "first_seen": 12, "score": 7, "title": 42, "company": 26,
-            "location": 24, "source": 16, "matched": 30, "tags": 30,
-            "posted": 12, "url": 50, "id": 12,
+            "status": 11, "first_seen": 12, "score": 7, "title": 42,
+            "company": 26, "location": 24, "source": 16, "matched": 30,
+            "tags": 30, "posted": 12, "url": 50, "id": 12,
         }
+
+        status_letter = None
 
         for index, column_name in enumerate(dataframe.columns, start=1):
             # openpyxl numbers columns 1, 2, 3... and names them A, B, C...
             letter = sheet.cell(row=1, column=index).column_letter
             sheet.column_dimensions[letter].width = widths.get(column_name, 18)
+
+            if column_name == "status":
+                status_letter = letter
+
+        # Turn the status column into a dropdown, so marking a job applied
+        # is a click rather than typing - and you cannot fat-finger
+        # "appleid", which would silently never match.
+        if status_letter and len(dataframe) > 0:
+            dropdown = DataValidation(
+                type="list",
+                formula1='"' + ",".join(STATUS_VALUES) + '"',
+                allow_blank=True,
+            )
+            dropdown.error = "Pick one of: " + ", ".join(STATUS_VALUES)
+            dropdown.prompt = "Mark this job applied once you have applied."
+
+            sheet.add_data_validation(dropdown)
+            dropdown.add("%s2:%s%d" % (
+                status_letter, status_letter, len(dataframe) + 1,
+            ))
