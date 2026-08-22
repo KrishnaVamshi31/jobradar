@@ -26,6 +26,7 @@ either publishes an open API or an RSS feed meant to be read by programs.
 
 import html
 import os
+import re
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
@@ -96,8 +97,33 @@ def fetch(url):
             if attempt < config.RETRY_ATTEMPTS:
                 time.sleep(attempt * 2)   # wait 2s, then 4s, then give up
 
-    # If we get here, every attempt failed. Tell the caller what went wrong.
-    raise RuntimeError("Could not reach " + url + " - " + str(last_error))
+    # If we get here, every attempt failed. Tell the caller what went wrong,
+    # but scrub the credentials out first - see strip_secrets below.
+    raise RuntimeError(
+        "Could not reach " + strip_secrets(url) + " - " + strip_secrets(last_error)
+    )
+
+
+def strip_secrets(text):
+    """
+    Remove query strings from any URLs in a piece of text.
+
+    This exists because of a genuine near-miss. The Adzuna URL carries your
+    app_id and app_key in its query string:
+
+        https://api.adzuna.com/v1/api/jobs/in/search/1?app_id=X&app_key=Y
+
+    When a request failed, that whole URL went into the error message, which
+    then got printed to the terminal and into the GitHub Actions log. GitHub
+    masked it because it knew the value was a secret, but running locally
+    would have printed your real API key to the screen and into your shell
+    history.
+
+    Errors get shown to people and written to logs, so they must never carry
+    credentials. Stripping "?" and everything after it keeps the useful part
+    of the URL and throws the secret away.
+    """
+    return re.sub(r"(https?://[^\s?]+)\?\S*", r"\1", str(text))
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +231,7 @@ def epoch_to_date(value):
 
     Some APIs send dates as text ("2026-08-20"), but others send a Unix
     timestamp - a plain number counting seconds since 1 January 1970.
-    So 1787317502 is really 19 August 2026.
+    So 1787317502 is really 21 August 2026.
 
     Himalayas does this, and it is a good reminder to always check what
     TYPE a field is before slicing it up like text.
@@ -528,6 +554,6 @@ def scrape_all(sources, limit, on_status=None):
             # Catching broad Exception on purpose: one misbehaving website
             # should never take down the whole run.
             if on_status:
-                on_status(name, "error", str(error)[:80])
+                on_status(name, "error", str(error)[:150])
 
     return all_jobs

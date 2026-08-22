@@ -225,10 +225,10 @@ python -m pytest
 ```
 
 ```
-49 passed
+60 passed
 ```
 
-49 tests covering scoring, whole-word matching, the blocklist, the level and
+60 tests covering scoring, whole-word matching, the blocklist, the level and
 location rules, the ID fingerprints, and a full save-and-read-back round
 trip. They use temporary folders, so running them never touches your real
 `data/`. Several are named after bugs that actually happened — see below.
