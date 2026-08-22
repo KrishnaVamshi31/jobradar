@@ -143,6 +143,12 @@ this from a demo into a tool.
 
 Too few results? Lower `MIN_SCORE`, or set `REQUIRE_LOCATION_MATCH = False`.
 
+**After a big retune, reset your history.** `data/jobs.csv` keeps every job
+it has ever seen, scored under whatever rules were in force at the time. So
+jobs your new filters would reject can linger there. Delete `data/jobs.csv`
+and `data/jobs.xlsx` and run again for a clean slate - everything gets
+re-scraped and re-scored under the current rules.
+
 
 ---
 
