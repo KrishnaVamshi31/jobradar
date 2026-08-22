@@ -127,7 +127,7 @@ BLOCKLIST = [
     # It was a building architect, not a software one.
     "civil", "mechanical", "electrical", "structural", "precast",
     "costing", "laborer", "welder", "nurse", "teacher", "chef",
-    "driver", "accountant", "recruiter", "warehouse",
+    "driver", "accountant", "recruiter", "warehouse", "maintenance",
 
     # --- tech-adjacent but not writing code ---
     # These slipped in by matching "ai" or "engineer": a "Technical Product
@@ -150,7 +150,12 @@ BLOCKLIST = [
 # not make it the right job.
 #
 # So skills are the gate, and location is only a bonus on top.
-MIN_KEYWORD_SCORE = 4
+#
+# Set to 6 rather than 4 deliberately: "engineer" on its own is worth 4, and
+# at 4 that let in "Jr. Engineer Thermo Forming Machine Maintenance" - a
+# factory job. One generic word should not be enough to qualify. Anything
+# real ("developer" 8, "python" 14, "full stack" 13) still clears it easily.
+MIN_KEYWORD_SCORE = 6
 
 # The total a job needs (keywords + location) to reach your report.
 # Set both of these to 0 to keep everything and see the raw scores first.
