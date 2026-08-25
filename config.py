@@ -18,6 +18,8 @@ SOURCES = [
     "remotive",        # Remote jobs, tells us which countries can apply
     "himalayas",       # Remote jobs, includes the seniority level
     "adzuna",          # REAL jobs in Indian cities - needs a free key, see README
+    "jobspresso",      # Curated remote jobs     - public RSS feed
+    "workingnomads",   # Remote jobs, many categories - open JSON API
 
     # "fakejobs",      # Practice data from Real Python. Not real jobs - you
                        # cannot apply to them. Turn this on only if you want

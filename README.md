@@ -2,7 +2,7 @@
 
 A job board scraper and tracker, built for applying from India.
 
-It pulls listings from five job boards, scores them against keywords you
+It pulls listings from seven job boards, scores them against keywords you
 choose, filters out roles that will not hire from your country, remembers
 everything it has seen before, and tells you which jobs are **new since your
 last run**.
@@ -47,7 +47,7 @@ JobRadar -- scanning job boards
 
 ## What makes it useful
 
-- **Five sources, three formats** — a JSON API, an RSS feed, and raw HTML.
+- **Seven sources, three formats** — a JSON API, an RSS feed, and raw HTML.
   Each needs a different technique.
 - **It knows you are in India.** Most "remote" jobs are not open to
   everyone. A real listing we pulled said *"Americas, Europe, Israel"* —
@@ -194,7 +194,29 @@ one line to `SCRAPERS`.
 | We Work Remotely | RSS (XML) | Global remote jobs |
 | Remotive | JSON API | Which countries may apply |
 | Himalayas | JSON API | Location limits and seniority |
+| Jobspresso | RSS (XML) | Curated remote jobs |
+| Working Nomads | JSON API | Remote jobs across many categories |
 | Real Python fake-jobs | Raw HTML | Practice data, off by default |
+
+### Sites that were checked and rejected
+
+A list of "25 job portals" doing the rounds on LinkedIn turned out to be
+mostly unusable, which is worth knowing before you trust one:
+
+| Site | Why not |
+|------|---------|
+| Naukri, LinkedIn, Internshala | robots.txt forbids automated access |
+| Indeed, Glassdoor, Upwork, NoDesk | robots.txt blocks AI crawlers **by name** |
+| SimplyHired, Stack Overflow | return 403 to any script |
+| Stack Overflow Jobs | shut down in 2022 - the link is dead |
+| Outsourcely, RemoteFreelance, Europe Remotely | domains do not respond at all |
+| Remotees | just redirects to We Work Remotely |
+| Pangian | redirects to a GitHub Pages placeholder |
+| FlexJobs, Virtual Vocations | paid subscription, no public feed |
+| Wellfound, Toptal | no public API to read |
+
+Of 25 links, **two** were both legitimate and readable: Jobspresso and
+Working Nomads. Both are in the table above.
 
 ### How "new" is detected
 

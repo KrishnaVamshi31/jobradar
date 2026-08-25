@@ -1,19 +1,21 @@
 """
 scrapers.py - The code that visits job sites and reads the listings.
 
-There are six scrapers in here, covering the three formats you meet in the
+There are eight scrapers in here, covering the three formats you meet in the
 real world - a JSON API, an RSS feed, and raw HTML:
 
     1. remoteok        JSON API   global remote jobs
     2. weworkremotely  RSS (XML)  global remote jobs
-    3. remotive        JSON API   remote jobs, says which countries can apply
-    4. himalayas       JSON API   remote jobs, gives seniority level too
-    5. adzuna          JSON API   REAL jobs in Indian cities (needs free key)
-    6. fakejobs        raw HTML   practice data, off by default
+    3. fakejobs        raw HTML   practice data, off by default
+    4. remotive        JSON API   remote jobs, says which countries can apply
+    5. himalayas       JSON API   remote jobs, gives seniority level too
+    6. adzuna          JSON API   REAL jobs in Indian cities (needs free key)
+    7. jobspresso      RSS (XML)  curated remote jobs
+    8. workingnomads   JSON API   remote jobs, wide range of categories
 
 The important idea: no matter which format a site uses, every scraper here
 returns the SAME shape of data (see make_job below). That way the rest of
-the program never has to care where a job came from. Adding a seventh
+the program never has to care where a job came from. Adding a ninth
 source means writing one function and adding one line to SCRAPERS.
 
 A note on which sites are in this list. Naukri, LinkedIn, Indeed and
@@ -39,7 +41,7 @@ import config
 
 
 # ---------------------------------------------------------------------------
-# Shared helpers - used by all six scrapers
+# Shared helpers - used by all eight scrapers
 # ---------------------------------------------------------------------------
 
 def make_job(title, company, location, url, source, tags="", posted=""):
@@ -127,7 +129,7 @@ def strip_secrets(text):
 
 
 # ---------------------------------------------------------------------------
-# Scraper 1 of 6: RemoteOK  (format: JSON API)
+# Scraper 1 of 8: RemoteOK  (format: JSON API)
 # ---------------------------------------------------------------------------
 
 def scrape_remoteok(limit):
@@ -175,7 +177,7 @@ def scrape_remoteok(limit):
 
 
 # ---------------------------------------------------------------------------
-# Scraper 2 of 6: We Work Remotely  (format: RSS / XML)
+# Scraper 2 of 8: We Work Remotely  (format: RSS / XML)
 # ---------------------------------------------------------------------------
 
 def scrape_weworkremotely(limit):
@@ -261,7 +263,7 @@ def parse_rss_date(raw_date):
 
 
 # ---------------------------------------------------------------------------
-# Scraper 3 of 6: Fake Jobs  (format: raw HTML)
+# Scraper 3 of 8: Fake Jobs  (format: raw HTML)
 # ---------------------------------------------------------------------------
 
 def scrape_fakejobs(limit):
@@ -316,7 +318,7 @@ def scrape_fakejobs(limit):
 
 
 # ---------------------------------------------------------------------------
-# Scraper 4 of 6: Remotive  (format: JSON API)
+# Scraper 4 of 8: Remotive  (format: JSON API)
 # ---------------------------------------------------------------------------
 
 def scrape_remotive(limit):
@@ -357,7 +359,7 @@ def scrape_remotive(limit):
 
 
 # ---------------------------------------------------------------------------
-# Scraper 5 of 6: Himalayas  (format: JSON API)
+# Scraper 5 of 8: Himalayas  (format: JSON API)
 # ---------------------------------------------------------------------------
 
 def scrape_himalayas(limit):
@@ -404,7 +406,7 @@ def scrape_himalayas(limit):
 
 
 # ---------------------------------------------------------------------------
-# Scraper 6 of 6: Adzuna India  (format: JSON API, needs a free key)
+# Scraper 6 of 8: Adzuna India  (format: JSON API, needs a free key)
 # ---------------------------------------------------------------------------
 
 def scrape_adzuna(limit):
@@ -502,12 +504,146 @@ def load_adzuna_key():
         with open(key_file, encoding="utf-8") as file:
             # Ignore blank lines so a stray newline does not break things
             lines = [line.strip() for line in file if line.strip()]
-        if len(lines) >= 2:
-            return lines[0], lines[1]
+
+        if len(lines) < 2:
+            raise RuntimeError(
+                "adzuna_key.txt needs 2 lines: app id, then app key"
+            )
+
+        app_id, app_key = lines[0], lines[1]
+
+        # Sanity-check the length before we bother the network.
+        #
+        # A truncated paste is easy to do and produces a bare
+        # "401 Unauthorized", which tells you nothing about what is wrong.
+        # Adzuna app keys are 32 characters; ids are around 8.
+        if len(app_key) < 20:
+            raise RuntimeError(
+                "your Adzuna app key looks too short (%d characters, expected "
+                "about 32) - re-copy it from developer.adzuna.com" % len(app_key)
+            )
+
+        return app_id, app_key
 
     raise RuntimeError(
         "no Adzuna key - add adzuna_key.txt (see README), skipping this source"
     )
+
+
+# ---------------------------------------------------------------------------
+# Scraper 7 of 8: Jobspresso  (format: RSS / XML)
+# ---------------------------------------------------------------------------
+
+def scrape_jobspresso(limit):
+    """
+    Read jobs from the Jobspresso RSS feed. Curated remote jobs.
+
+    Two things worth knowing about this feed.
+
+    First, we use /jobs/feed/ rather than /?feed=job_feed, even though both
+    work. Their robots.txt says "Disallow: /*?" - any url with a query
+    string is off limits - so the query version is not allowed and the
+    clean path is. Same data, and we stay inside their rules.
+
+    Second, they pack the company AND the location into one field:
+
+        Avetra Media<br>(pin)&nbsp;Global
+
+    So we split it apart ourselves.
+    """
+    response = fetch("https://jobspresso.co/jobs/feed/")
+    root = ET.fromstring(response.content)
+
+    # dc:creator lives in the Dublin Core namespace, so ElementTree needs
+    # to be told what "dc" means before it can find the tag.
+    namespaces = {"dc": "http://purl.org/dc/elements/1.1/"}
+
+    jobs = []
+    for item in root.findall(".//item"):
+        title = item.findtext("title") or ""
+        if not title:
+            continue
+
+        creator = item.findtext("dc:creator", namespaces=namespaces) or ""
+        company, location = split_jobspresso_creator(creator)
+
+        jobs.append(make_job(
+            title=title,
+            company=company,
+            location=location,
+            url=item.findtext("link"),
+            source="jobspresso",
+            tags="",   # this feed does not tag its jobs
+            posted=parse_rss_date(item.findtext("pubDate")),
+        ))
+
+        if len(jobs) >= limit:
+            break
+
+    return jobs
+
+
+def split_jobspresso_creator(creator):
+    """
+    Pull the company and location out of one squashed Jobspresso field.
+
+    The raw value looks like:
+
+        "Avetra Media<br>⚲&nbsp;Global"
+
+    where ⚲ is a little map-pin symbol. We split on the <br>, then
+    strip the pin and the &nbsp; off the location half.
+    """
+    if not creator:
+        return "", ""
+
+    parts = re.split(r"<br\s*/?>", creator, maxsplit=1)
+
+    company = clean(parts[0])
+    location = clean(parts[1]) if len(parts) > 1 else ""
+
+    # Drop the map-pin symbol and any leftover punctuation around it.
+    location = location.replace("⚲", "").strip("  ·-")
+
+    return company, location
+
+
+# ---------------------------------------------------------------------------
+# Scraper 8 of 8: Working Nomads  (format: JSON API)
+# ---------------------------------------------------------------------------
+
+def scrape_workingnomads(limit):
+    """
+    Read jobs from the Working Nomads API.
+
+    Their endpoint is literally called "exposed_jobs", and their robots.txt
+    is "User-agent: * / Disallow:" with nothing after it - meaning the whole
+    site is open. About as clear an invitation as a site can give.
+
+    The data comes back as a plain list of jobs, already tidy.
+    """
+    url = "https://www.workingnomads.com/api/exposed_jobs/"
+    records = fetch(url).json()
+
+    jobs = []
+    for record in records[:limit]:
+        if not record.get("title"):
+            continue
+
+        jobs.append(make_job(
+            title=record.get("title"),
+            company=record.get("company_name"),
+            location=record.get("location"),
+            url=record.get("url"),
+            source="workingnomads",
+            tags=", ".join(filter(None, [
+                record.get("category_name"),
+                record.get("tags"),
+            ])),
+            posted=(record.get("pub_date") or "")[:10],
+        ))
+
+    return jobs
 
 
 # ---------------------------------------------------------------------------
@@ -520,6 +656,8 @@ SCRAPERS = {
     "remotive": scrape_remotive,
     "himalayas": scrape_himalayas,
     "adzuna": scrape_adzuna,
+    "jobspresso": scrape_jobspresso,
+    "workingnomads": scrape_workingnomads,
     "fakejobs": scrape_fakejobs,   # practice data - off by default
 }
 
