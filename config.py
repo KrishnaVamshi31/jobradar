@@ -204,7 +204,13 @@ MIN_KEYWORD_SCORE = 6
 # Jobs that never mention a number are KEPT - most listings aimed at freshers
 # simply do not talk about years, so treating silence as a rejection would
 # throw away exactly the jobs you want. Set to None to switch this off.
-MAX_YEARS_EXPERIENCE = 2
+#
+# Set to 3 rather than 2 on purpose. Ranges are read at their LOWER bound,
+# so a "2-3 years" job already passed at 2. Going to 3 additionally lets
+# through postings that ask for "3+ years" or "3-5 years", which routinely
+# still interview a strong fresher - the number in an ad is usually a wish,
+# not a rule. Raise it further if you want an even wider net.
+MAX_YEARS_EXPERIENCE = 3
 
 # The total a job needs (keywords + location) to reach your report.
 # Set both of these to 0 to keep everything and see the raw scores first.

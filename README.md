@@ -135,7 +135,7 @@ MIN_KEYWORD_SCORE = 6     # skills bar, checked before any bonus
 MIN_SCORE = 6             # total bar, after level and location bonuses
 
 REQUIRE_LOCATION_MATCH = True   # drop jobs that will not hire from India
-MAX_YEARS_EXPERIENCE = 2        # drop jobs asking for more, read from the
+MAX_YEARS_EXPERIENCE = 3        # drop jobs asking for more, read from the
                                 # DESCRIPTION not the title
 ```
 
