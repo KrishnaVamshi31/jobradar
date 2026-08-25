@@ -486,3 +486,109 @@ def config_keywords():
     """Read the real KEYWORDS out of config, so this test tracks reality."""
     import config
     return config.KEYWORDS
+
+
+# ---------------------------------------------------------------------------
+# Experience requirements, read out of the job DESCRIPTION
+# ---------------------------------------------------------------------------
+
+def job_with(description, title="Software Engineer"):
+    job = make_job(title=title)
+    job["description"] = description
+    return job
+
+
+def test_reads_a_plain_requirement():
+    assert filters.required_years("Experience: 5+ Years, Full-time") == 5
+
+
+def test_a_range_takes_the_lower_bound():
+    """"2-3 years" means they will look at you with two."""
+    assert filters.required_years("2-3 years of experience in retail") == 2
+    assert filters.required_years("1 to 3 years of Technician experience") == 1
+
+
+def test_at_least_phrasing():
+    assert filters.required_years("At least 5 years of sales experience") == 5
+
+
+def test_company_history_is_not_a_requirement():
+    """
+    The trap that makes a naive regex useless.
+
+    A real listing said "the proud guardians of over 130 years of baking
+    experience". That is heritage, not a demand - and 130 years of anything
+    is nobody's CV, so implausibly large numbers are ignored.
+    """
+    text = "proud guardians of over 130 years of baking experience"
+    assert filters.required_years(text) is None
+
+
+def test_years_unrelated_to_experience_are_ignored():
+    """"Founded 5 years ago" is not asking you for five years."""
+    assert filters.required_years("Founded 5 years ago, we build tools") is None
+
+
+def test_no_mention_means_unknown():
+    """
+    Silence is not a rejection.
+
+    Most listings aimed at freshers never mention years at all, so treating
+    a missing number as "too senior" would discard exactly the right jobs.
+    """
+    assert filters.required_years("We are hiring a Python developer") is None
+    assert filters.required_years("") is None
+
+
+def test_a_senior_requirement_is_filtered_out():
+    job = job_with("We need 5+ years of professional experience with Python")
+    assert not filters.experience_is_ok(job, max_years=2)
+
+
+def test_a_fresher_friendly_requirement_passes():
+    job = job_with("0-2 years of experience, training provided")
+    assert filters.experience_is_ok(job, max_years=2)
+
+
+def test_jobs_with_no_stated_requirement_are_kept():
+    job = job_with("Join our team building great software")
+    assert filters.experience_is_ok(job, max_years=2)
+
+
+def test_the_filter_can_be_switched_off():
+    job = job_with("10+ years of experience required")
+    assert filters.experience_is_ok(job, max_years=None)
+
+
+def test_end_to_end_a_senior_job_never_reaches_your_report():
+    """
+    The whole point: the TITLE looks fine, so the blocklist misses it.
+    Only reading the description catches this one.
+    """
+    sneaky = job_with("Requirements: 8+ years of experience with Django")
+    fine = job_with("Great first role, we will train you")
+
+    kept = filters.filter_jobs(
+        [sneaky, fine], KEYWORDS, [], min_score=0, max_years=2,
+    )
+
+    assert len(kept) == 1
+    assert kept[0]["description"].startswith("Great first role")
+
+
+def test_years_required_is_recorded_so_you_can_check_it():
+    """You should be able to see WHY a job was kept, not just trust it."""
+    kept = filters.filter_jobs(
+        [job_with("We ask for 2 years of experience")],
+        KEYWORDS, [], min_score=0, max_years=2,
+    )
+
+    assert kept[0]["years_required"] == 2
+
+
+def test_years_required_is_blank_when_not_stated():
+    kept = filters.filter_jobs(
+        [job_with("A lovely job")], KEYWORDS, [], min_score=0, max_years=2,
+    )
+
+    assert kept[0]["years_required"] == ""

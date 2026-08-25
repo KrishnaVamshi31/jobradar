@@ -34,6 +34,7 @@ COLUMNS = [
     "status",
     "first_seen",
     "score",
+    "years_required",
     "title",
     "company",
     "location",
@@ -317,7 +318,7 @@ def write_excel(dataframe, excel_file):
 
         # Set a sensible width for each column, based on its name.
         widths = {
-            "status": 11, "first_seen": 12, "score": 7, "title": 42,
+            "status": 11, "first_seen": 12, "score": 7, "years_required": 8, "title": 42,
             "company": 26, "location": 24, "source": 16, "matched": 30,
             "tags": 30, "posted": 12, "url": 50, "id": 12,
         }

@@ -131,10 +131,12 @@ LEVEL_KEYWORDS = {        # bonus only, applied after the gate
 
 BLOCKLIST = ["senior", "manager", "architect", "content writer"]
 
-MIN_KEYWORD_SCORE = 4     # skills bar, checked before any bonus
+MIN_KEYWORD_SCORE = 6     # skills bar, checked before any bonus
 MIN_SCORE = 6             # total bar, after level and location bonuses
 
 REQUIRE_LOCATION_MATCH = True   # drop jobs that will not hire from India
+MAX_YEARS_EXPERIENCE = 2        # drop jobs asking for more, read from the
+                                # DESCRIPTION not the title
 ```
 
 Currently tuned for **AI, web development and general software roles**.
@@ -174,7 +176,7 @@ python main.py --source adzuna --min-score 15 --new-only --open
 | Step | File | What happens |
 |------|------|--------------|
 | 1. Scrape | `scrapers.py` | Visit the sites and read the listings |
-| 2. Filter | `filters.py` | Score, blocklist, location check, rank |
+| 2. Filter | `filters.py` | Score, blocklist, location, experience, rank |
 | 3. Compare | `storage.py` | Work out which jobs are new |
 | 4. Save | `storage.py` | Write the CSV and Excel files |
 | 5. Report | `report.py` | Print a table, build the web page |
@@ -318,13 +320,42 @@ python -m pytest
 ```
 
 ```
-80 passed
+93 passed
 ```
 
-80 tests covering scoring, whole-word matching, the blocklist, the level and
+93 tests covering scoring, whole-word matching, the blocklist, the level and
 location rules, the ID fingerprints, and a full save-and-read-back round
 trip. They use temporary folders, so running them never touches your real
 `data/`. Several are named after bugs that actually happened — see below.
+
+---
+
+## Reading the small print
+
+The blocklist only ever sees job **titles**, which misses the most annoying
+case: a role called plainly "Software Engineer" whose description says
+"5+ years required" three paragraphs down. You would only find out after
+clicking.
+
+So the description gets read too, and the years are pulled out of it:
+
+```
+"Experience: 5+ Years"                   -> 5
+"2-3 years of experience in retail"      -> 2   (ranges take the lower bound)
+"1 to 3 years of Technician experience"  -> 1
+"At least 5 years of sales experience"   -> 5
+```
+
+Anything above `MAX_YEARS_EXPERIENCE` is dropped, and the number it found is
+written into the `years_required` column so you can check its work rather
+than trust it.
+
+Two things it deliberately does NOT do. A posting that never mentions years
+is **kept** - most fresher-friendly listings simply do not discuss it, so
+treating silence as a rejection would discard exactly the right jobs. And
+implausibly large numbers are ignored: one listing described itself as "the
+proud guardians of over 130 years of baking experience", which is heritage,
+not a demand.
 
 ---
 

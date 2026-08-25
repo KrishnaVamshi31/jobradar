@@ -44,12 +44,19 @@ import config
 # Shared helpers - used by all eight scrapers
 # ---------------------------------------------------------------------------
 
-def make_job(title, company, location, url, source, tags="", posted=""):
+def make_job(title, company, location, url, source, tags="", posted="",
+             description=""):
     """
     Build one job in the standard shape.
 
     Every scraper calls this, which guarantees every job has the same keys.
     If a site does not give us a field (say, no location), we just use "".
+
+    The description is kept so filters.py can read the experience
+    requirement out of it - a job titled "Software Engineer" can still say
+    "5+ years required" three paragraphs down. It is NOT saved to the CSV;
+    storage.py only writes the columns it lists, so the spreadsheet stays
+    readable.
     """
     return {
         "title": clean(title),
@@ -59,7 +66,28 @@ def make_job(title, company, location, url, source, tags="", posted=""):
         "source": source,
         "tags": clean(tags),
         "posted": posted or "",
+        "description": strip_html(description),
     }
+
+
+def strip_html(text):
+    """
+    Turn a chunk of description HTML into plain readable text.
+
+    Descriptions arrive full of tags, and a requirement like
+    "<li>5+ years</li>" would otherwise be awkward to search. We also cap
+    the length: we only need enough to find an experience requirement, and
+    holding several hundred full job descriptions in memory is wasteful.
+    """
+    if not text:
+        return ""
+
+    # Drop tags first, THEN unescape - otherwise an escaped "&lt;b&gt;"
+    # would turn into a real tag after we had finished removing them.
+    without_tags = re.sub(r"<[^>]+>", " ", str(text))
+    readable = html.unescape(without_tags)
+
+    return " ".join(readable.split())[:6000]
 
 
 def clean(text):
@@ -168,6 +196,7 @@ def scrape_remoteok(limit):
             source="remoteok",
             tags=tags,
             posted=posted,
+            description=record.get("description"),
         ))
 
         if len(jobs) >= limit:
@@ -219,6 +248,7 @@ def scrape_weworkremotely(limit):
             source="weworkremotely",
             tags=tags,
             posted=parse_rss_date(item.findtext("pubDate")),
+            description=item.findtext("description"),
         ))
 
         if len(jobs) >= limit:
@@ -353,6 +383,7 @@ def scrape_remotive(limit):
                 record.get("job_type"),
             ])),
             posted=(record.get("publication_date") or "")[:10],
+            description=record.get("description"),
         ))
 
     return jobs
@@ -400,6 +431,7 @@ def scrape_himalayas(limit):
                 (record.get("categories") or []) + seniority
             )),
             posted=epoch_to_date(record.get("pubDate")),
+            description=record.get("description") or record.get("excerpt"),
         ))
 
     return jobs
@@ -473,6 +505,7 @@ def scrape_adzuna(limit):
             source="adzuna",
             tags=category,
             posted=(record.get("created") or "")[:10],
+            description=record.get("description"),
         ))
 
     return jobs
@@ -575,6 +608,7 @@ def scrape_jobspresso(limit):
             source="jobspresso",
             tags="",   # this feed does not tag its jobs
             posted=parse_rss_date(item.findtext("pubDate")),
+            description=item.findtext("description"),
         ))
 
         if len(jobs) >= limit:
@@ -641,6 +675,7 @@ def scrape_workingnomads(limit):
                 record.get("tags"),
             ])),
             posted=(record.get("pub_date") or "")[:10],
+            description=record.get("description"),
         ))
 
     return jobs

@@ -184,6 +184,103 @@ def location_is_usable(job, location_keywords):
     return points > 0
 
 
+# Matches a number of years, optionally as a range:
+#   "5 years"  "5+ years"  "2-3 years"  "1 to 3 years"  "3–5 yrs"
+YEARS_PATTERN = re.compile(
+    r"(\d{1,3})\s*\+?\s*"                 # the first number, maybe with a +
+    r"(?:(?:[-–—]|to|and)\s*(\d{1,3})\s*\+?\s*)?"   # optionally "-5" or "to 5"
+    r"(?:years?|yrs?)\b",
+    re.IGNORECASE,
+)
+
+# A personal experience requirement is realistically under this. Anything
+# larger is the company talking about itself - a real listing said
+# "over 130 years of baking experience", which is heritage, not a demand.
+MAX_PLAUSIBLE_YEARS = 20
+
+# How far either side of a "N years" phrase we look for the word
+# "experience". Without this check, "2 years" in any context would count.
+EXPERIENCE_WINDOW = 60
+
+
+def required_years(description):
+    """
+    Work out the minimum years of experience a job description asks for.
+
+    Returns a number, or None when the description does not mention any
+    requirement. None means "we do not know" - and unknown is NOT the same
+    as "too senior", so those jobs are kept. Same principle as a missing
+    location.
+
+    Real phrasings this handles, all taken from actual listings:
+
+        "Experience: 5+ Years"                  -> 5
+        "6+ years of proven experience in GRC"  -> 6
+        "2-3 years of experience in retail"     -> 2   (the lower bound)
+        "1 to 3 years of Technician experience" -> 1
+        "At least 5 years of sales experience"  -> 5
+        "Experience 1 year to less than 2 years"-> 1
+
+    Two deliberate choices:
+
+    Ranges take the LOWER number, because "2-3 years" means they will look
+    at you with two.
+
+    When several requirements appear, we take the SMALLEST. A posting
+    saying "2+ years with Python, 5+ years leadership preferred" really
+    has a bar of two, and over-filtering costs you real opportunities.
+    """
+    if not description:
+        return None
+
+    text = str(description)
+    found = []
+
+    for match in YEARS_PATTERN.finditer(text):
+        # Look at the words around this phrase. If nobody mentions
+        # experience nearby, this is some other use of "years".
+        start = max(0, match.start() - EXPERIENCE_WINDOW)
+        end = min(len(text), match.end() + EXPERIENCE_WINDOW)
+        context = text[start:end].lower()
+
+        if "experien" not in context and "exp." not in context:
+            continue
+
+        low = int(match.group(1))
+
+        # For a range, the lower bound is the real bar. The pattern puts
+        # the second number in group(2) when there is one.
+        if match.group(2):
+            low = min(low, int(match.group(2)))
+
+        # Skip company-history numbers like "130 years of experience".
+        if low > MAX_PLAUSIBLE_YEARS:
+            continue
+
+        found.append(low)
+
+    return min(found) if found else None
+
+
+def experience_is_ok(job, max_years):
+    """
+    True if this job is open to someone with your level of experience.
+
+    Jobs that never state a requirement are kept. Most listings that want a
+    fresher simply do not talk about years at all, so treating silence as
+    disqualifying would throw away exactly the jobs you want.
+    """
+    if max_years is None:
+        return True
+
+    needed = required_years(job.get("description", ""))
+
+    if needed is None:
+        return True
+
+    return needed <= max_years
+
+
 def score_level(job, level_keywords):
     """
     Score a job on how junior it is, separately from what it is.
@@ -211,7 +308,8 @@ def score_level(job, level_keywords):
 
 def filter_jobs(jobs, keywords, blocklist, min_score,
                 location_keywords=None, require_location=False,
-                min_keyword_score=0, level_keywords=None):
+                min_keyword_score=0, level_keywords=None,
+                max_years=None):
     """
     Run the whole pipeline: score everything, drop the junk, sort the rest.
 
@@ -238,6 +336,14 @@ def filter_jobs(jobs, keywords, blocklist, min_score,
 
         # Step 2: skip jobs you could not take because of where they are
         if require_location and not location_is_usable(job, location_keywords):
+            continue
+
+        # Step 2b: skip jobs asking for more experience than you have.
+        #
+        # This reads the DESCRIPTION, not the title. A job called plainly
+        # "Software Engineer" can still say "5+ years required" several
+        # paragraphs down, and the title-only blocklist never saw it.
+        if not experience_is_ok(job, max_years):
             continue
 
         # Step 3: score the actual job - is this the kind of work you want?
@@ -267,6 +373,13 @@ def filter_jobs(jobs, keywords, blocklist, min_score,
         scored_job = dict(job)
         scored_job["score"] = score
         scored_job["matched"] = ", ".join(matched)
+
+        # Record what the description asked for, so you can see it in the
+        # spreadsheet rather than having to trust the filter blindly.
+        # Blank means the posting never mentioned a number.
+        years = required_years(job.get("description", ""))
+        scored_job["years_required"] = "" if years is None else years
+
         kept.append(scored_job)
 
     # Sort by score, highest first.

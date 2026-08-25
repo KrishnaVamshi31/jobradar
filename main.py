@@ -115,6 +115,7 @@ def run(args):
         require_location=config.REQUIRE_LOCATION_MATCH,
         min_keyword_score=config.MIN_KEYWORD_SCORE,
         level_keywords=config.LEVEL_KEYWORDS,
+        max_years=config.MAX_YEARS_EXPERIENCE,
     )
     report.console.print(
         f"  [green]OK[/green]     kept {len(matched)}, "

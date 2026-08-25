@@ -113,6 +113,7 @@ def test_every_scraper_returns_the_same_keys():
 
     assert set(job) == {
         "title", "company", "location", "url", "source", "tags", "posted",
+        "description",
     }
 
 

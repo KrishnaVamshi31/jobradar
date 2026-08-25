@@ -195,6 +195,17 @@ BLOCKLIST = [
 # real ("developer" 8, "python" 14, "full stack" 13) still clears it easily.
 MIN_KEYWORD_SCORE = 6
 
+# The most years of experience a job may ask for before we drop it.
+#
+# This one reads the job DESCRIPTION, not the title. A posting called plainly
+# "Software Engineer" can still demand "5+ years" three paragraphs down, and
+# the blocklist above only ever sees titles.
+#
+# Jobs that never mention a number are KEPT - most listings aimed at freshers
+# simply do not talk about years, so treating silence as a rejection would
+# throw away exactly the jobs you want. Set to None to switch this off.
+MAX_YEARS_EXPERIENCE = 2
+
 # The total a job needs (keywords + location) to reach your report.
 # Set both of these to 0 to keep everything and see the raw scores first.
 MIN_SCORE = 6
